@@ -1,6 +1,6 @@
-#ES6模块加载与Node模块加载
+# ES6模块加载与Node模块加载
 
-##1.浏览器加载
+## 1.浏览器加载
 
 在 HTML 网页中，浏览器通过`<script>`标签加载 JavaScript 脚本。
 
@@ -29,7 +29,7 @@
 即使这样依然会使得结构很混乱 比如：
 <img width="120px" src="">
 
-##2.ES6 模块与 CommonJS 模块的差异
+## 2.ES6 模块与 CommonJS 模块的差异
 
 讨论 Node 加载 ES6 模块之前，必须了解 ES6 模块与 CommonJS 模块完全不同。
 
@@ -41,7 +41,7 @@
 第二个差异是因为 `CommonJS` 加载的是一个对象（即[module.exports][0]属性），该对象只有在脚本运行完才会生成。而 ES6 模块不是对象，它的对外接口只是一种静态定义，在代码静态解析阶段就会生成。
 
 下面重点解释第一个差异。
-####CommonJS
+#### CommonJS
 ```javascript
 // lib.js
 var counter = 3;
@@ -84,7 +84,7 @@ $ node main.js
 3
 4
 ```
-####ES6
+#### ES6
 ES6 模块的运行机制与 CommonJS 不一样。JS 引擎对脚本静态分析的时候，遇到模块加载命令import，就会生成一个只读引用。等到脚本真正执行时，再根据这个只读引用，到被加载的那个模块里面去取值。换句话说，ES6 的import有点像 Unix 系统的“符号连接”，原始值变了，import加载的值也会跟着变。因此，ES6 模块是动态引用，并且不会缓存值，模块里面的变量绑定其所在的模块。
 还是举上面的例子。
 
@@ -162,7 +162,7 @@ import './y';
 
 现在执行main.js，输出的是1。
 
-##加载规则
+## 加载规则
 
 Node 对 ES6 模块的处理比较麻烦，因为它有自己的 CommonJS 模块格式，与 ES6 模块格式是不兼容的。目前的解决方案是，将两者分开，ES6 模块和 CommonJS 采用各自的加载方案。
 
@@ -191,7 +191,7 @@ ES6 模块之中，顶层的this指向undefined；CommonJS 模块的顶层this�
 ```javascript
 const isNotModuleScript = this !== undefined;
 ```
-###import 命令加载 CommonJS 模块
+### import 命令加载 CommonJS 模块
 
 Node 采用 CommonJS 模块格式，模块的输出都定义在module.exports这个属性上面。在 Node 环境中，使用import命令加载 CommonJS 模块，Node 会自动将module.exports属性，当作模块的默认输出，即等同于export default。
 
@@ -292,7 +292,7 @@ const app = express();
 ```
 
 
-###require 命令加载 ES6 模块
+### require 命令加载 ES6 模块
 
 采用require命令加载 ES6 模块时，ES6 模块的所有输出接口，会成为输入对象的属性。
 
@@ -329,7 +329,7 @@ const es_namespace = require('./es');
 ```
 
 
-##4.循环加载
+## 4.循环加载
 
 “循环加载”（circular dependency）指的是，a脚本的执行依赖b脚本，而b脚本的执行又依赖a脚本。
 ```javascript
@@ -347,7 +347,7 @@ var a = require('a');
 对于JavaScript语言来说，目前最常见的两种模块格式CommonJS和ES6，处理“循环加载”的方法是不一样的，返回的结果也不一样。
 
 
-####CommonJS模块的加载原理
+#### CommonJS模块的加载原理
 
 介绍ES6如何处理"循环加载"之前，先介绍目前最流行的CommonJS模块格式的加载原理。
 
@@ -366,7 +366,7 @@ CommonJS的一个模块，就是一个脚本文件。require命令第一次加�
 以后需要用到这个模块的时候，就会到exports属性上面取值。即使再次执行require命令，也不会再次执行该模块，而是到缓存之中取值。也就是说，CommonJS模块无论加载多少次，都只会在第一次加载时运行一次，以后再加载，就返回第一次运行的结果，除非手动清除系统缓存。
 
 
-###CommonJS模块的循环加载
+### CommonJS模块的循环加载
 
 CommonJS模块的重要特性是加载时执行，即脚本代码在require的时候，就会全部执行。一旦出现某个模块被"循环加载"，就只输出已经执行的部分，还未执行的部分不会输出。
 
@@ -440,7 +440,7 @@ exports.bad = function (arg) {
 ```
 上面代码中，如果发生循环加载，require('a').foo的值很可能后面会被改写，改用require('a')会更保险一点。
 
-###ES6模块的循环加载
+### ES6模块的循环加载
 
 ES6处理“循环加载”与CommonJS有本质的不同。ES6模块是动态引用，如果使用import从一个模块加载变量（即import foo from 'foo'），那些变量不会被缓存，而是成为一个指向被加载模块的引用，需要开发者自己保证，真正取值的时候能够取到值。
 
