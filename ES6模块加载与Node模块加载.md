@@ -39,9 +39,7 @@
 
 > CommonJS 模块是运行时加载，ES6 模块是编译时输出接口。
 
-第二个差异是因为 `CommonJS` 加载的是一个对象（即[module.exports]('')属性），该对象只有在脚本运行完才会生成。而 ES6 模块不是对象，它的对外接口只是一种静态定义，在代码静态解析阶段就会生成。
 
-下面重点解释第一个差异。
 ### CommonJS
 ```javascript
 // lib.js
@@ -60,11 +58,11 @@ module.exports = {
 // main.js
 var mod = require('./lib');
 
-console.log(mod.counter);  // 3
+console.log(mod.counter);
 mod.incCounter();
-console.log(mod.counter); // 3
+console.log(mod.counter);
 ```
-上面代码说明，lib.js模块加载以后，它的内部变化就影响不到输出的mod.counter了。这是因为mod.counter是一个原始类型的值，会被缓存。除非写成一个函数，才能得到内部变动后的值。
+写成一个函数，才能得到内部变动后的值。
 ```javascript
 // lib.js
 var counter = 3;
@@ -78,13 +76,7 @@ module.exports = {
   incCounter: incCounter,
 };
 ```
-上面代码中，输出的counter属性实际上是一个取值器函数。现在再执行main.js，就可以正确读取内部变量counter的变动了。
 
-```javascript
-$ node main.js
-3
-4
-```
 ### ES6
 ES6 模块的运行机制与 CommonJS 不一样。JS 引擎对脚本静态分析的时候，遇到模块加载命令import，就会生成一个只读引用。等到脚本真正执行时，再根据这个只读引用，到被加载的那个模块里面去取值。换句话说，ES6 的import有点像 Unix 系统的“符号连接”，原始值变了，import加载的值也会跟着变。因此，ES6 模块是动态引用，并且不会缓存值，模块里面的变量绑定其所在的模块。
 还是举上面的例子。
@@ -98,9 +90,9 @@ export function incCounter() {
 
 // main.js
 import { counter, incCounter } from './lib';
-console.log(counter); // 3
+console.log(counter);
 incCounter();
-console.log(counter); // 4
+console.log(counter);
 ```
 
 ```javascript
@@ -115,19 +107,8 @@ setTimeout(() => console.log(foo), 500);
 ```
 上面代码表明，ES6 模块不会缓存运行结果，而是动态地去被加载的模块取值，并且变量总是绑定其所在的模块。
 
-由于 ES6 输入的模块变量，只是一个“符号连接”，所以这个变量是只读的，对它进行重新赋值会报错。
+由于 ES6 输入的模块变量是只读的，对它进行重新赋值会报错。
 
-```javascript
-// lib.js
-export let obj = {};
-
-// main.js
-import { obj } from './lib';
-
-obj.prop = 123; // OK
-obj = {}; // TypeError
-```
-上面代码中，main.js从lib.js输入变量obj，可以对obj添加属性，但是重新赋值就会报错。因为变量obj指向的地址是只读的，不能重新赋值，这就好比main.js创造了一个名为obj的const变量。
 
 最后，export通过接口，输出的是同一个值。不同的脚本加载这个接口，得到的都是同样的实例。
 ```javascript
@@ -161,7 +142,6 @@ import './y';
 
 ```
 
-现在执行main.js，输出的是1。
 
 ## 加载规则
 
@@ -186,7 +166,7 @@ import 'baz';
 //   ../node_modules/baz/index.js
 // 再上一级目录
 ```
-ES6 模块之中，顶层的this指向undefined；CommonJS 模块的顶层this指向当前模块，这是两者的一个重大差异
+ES6 模块之中，顶层的this指向undefined；CommonJS 模块的顶层this指向当前模块.
 
 利用顶层的this等于undefined这个语法点，可以侦测当前代码是否在 ES6 模块之中。
 ```javascript
@@ -245,27 +225,6 @@ import foo from './b';
 import * as bar from './b';
 // bar = {default:null};
 ```
-上面代码中，es.js采用第二种写法时，要通过bar.default这样的写法，才能拿到module.exports。
-
-下面是另一个例子。
-
-
-```javascript
-// c.js
-module.exports = function two() {
-  return 2;
-};
-
-// es.js
-import foo from './c';
-foo(); // 2
-
-import * as bar from './c';
-bar.default(); // 2
-bar(); // throws, bar is not a function
-```
-
-上面代码中，bar本身是一个对象，不能当作函数调用，只能通过bar.default调用。
 
 CommonJS 模块的输出缓存机制，在 ES6 加载方式下依然有效。
 
@@ -332,7 +291,7 @@ const es_namespace = require('./es');
 
 ## 4.循环加载
 
-“循环加载”（circular dependency）指的是，a脚本的执行依赖b脚本，而b脚本的执行又依赖a脚本。
+`循环加载`（circular dependency）指的是，a脚本的执行依赖b脚本，而b脚本的执行又依赖a脚本。
 ```javascript
 // a.js
 var b = require('b');
@@ -341,16 +300,16 @@ var b = require('b');
 var a = require('a');
 ```
 
-通常，“循环加载”表示存在强耦合，如果处理不好，还可能导致递归加载，使得程序无法执行，因此应该避免出现。
+通常，`循环加载`表示存在强耦合，如果处理不好，还可能导致递归加载，使得程序无法执行，因此应该避免出现。
 
-但是实际上，这是很难避免的，尤其是依赖关系复杂的大项目，很容易出现a依赖b，b依赖c，c又依赖a这样的情况。这意味着，模块加载机制必须考虑“循环加载”的情况。
+但是实际上，这是很难避免的，尤其是依赖关系复杂的大项目，很容易出现a依赖b，b依赖c，c又依赖a这样的情况。这意味着，模块加载机制必须考虑`循环加载`的情况。
 
-对于JavaScript语言来说，目前最常见的两种模块格式CommonJS和ES6，处理“循环加载”的方法是不一样的，返回的结果也不一样。
+对于JavaScript语言来说，目前最常见的两种模块格式CommonJS和ES6，处理`循环加载`的方法是不一样的，返回的结果也不一样。
 
 
 #### CommonJS模块的加载原理
 
-介绍ES6如何处理"循环加载"之前，先介绍目前最流行的CommonJS模块格式的加载原理。
+介绍ES6如何处理`循环加载`之前，先介绍目前最流行的CommonJS模块格式的加载原理。
 
 CommonJS的一个模块，就是一个脚本文件。require命令第一次加载该脚本，就会执行整个脚本，然后在内存生成一个对象。
 
@@ -371,7 +330,7 @@ CommonJS的一个模块，就是一个脚本文件。require命令第一次加�
 
 CommonJS模块的重要特性是加载时执行，即脚本代码在require的时候，就会全部执行。一旦出现某个模块被"循环加载"，就只输出已经执行的部分，还未执行的部分不会输出。
 
-让我们来看，Node官方文档里面的例子。脚本文件a.js代码如下
+Node官方文档里面的例子:
 
 ```javascript
 exports.done = false;
@@ -387,7 +346,7 @@ console.log('a.js 执行完毕');
 ```javascript
 exports.done = false;
 var a = require('./a.js');
-console.log('在 b.js 之中，a.done = %j', a.done);
+console.log('在 b.js 之中，a.done '+ a.done);
 exports.done = true;
 console.log('b.js 执行完毕');
 ```
@@ -406,7 +365,7 @@ exports.done = false;
 ```javascript
 var a = require('./a.js');
 var b = require('./b.js');
-console.log('在 main.js 之中, a.done=%j, b.done=%j', a.done, b.done);
+console.log(`在 main.js 之中, a.done=${a.done}, b.done=${b.done}`);
 ```
 执行main.js，运行结果如下
 ```javascript
@@ -604,7 +563,7 @@ $ node
 TypeError: even is not a function
 ```
 
-
+[关于Module的语法](http://es6.ruanyifeng.com/#docs/module)
 [1]: /
 
 
