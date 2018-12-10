@@ -1,6 +1,6 @@
-###个人笔记
+# 个人笔记
 
-[MVVM](./MVVM.md)
+[剖析Vue原理&实现双向绑定MVVM](./MVVM.md)
 
 [ES6模块加载与Node模块加载](./ES6模块加载与Node模块加载.md)
 

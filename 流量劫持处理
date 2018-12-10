@@ -1,0 +1,228 @@
+和同事一起追查网页的js被流量劫持插入广告代码，被用户连续投诉好几个季度，从根本无法复现问题到发现问题发生在非北京的一些偏远地区，难以找到被劫持的链路等问题，我们最终解决了。
+
+而且是纯前端推动解决的，并且做到了科学的监控和杜绝。
+
+
+
+下面是干货时间，起因是这个样子的：
+
+用户陆续投诉我们的移动网页在某些地区大量的弹支付宝红包，弹抽奖代码，甚至直接呼起app，后退前进甚至什么都不点就会跳百度广告页。
+
+如果是你怎么处理？我们的站点已经是https的了，cdn也是https的。
+
+一开始复现问题是电话联系投诉用户，远程指导用户进行抓包操作，但是很多时候，劫持方是十分狡猾的，他们每天每个用户只劫持一次，或者固定时间段只劫持一次，导致很多投诉用户本身也是偶发这种劫持，感觉是有程序在控制他们一样。
+
+后来我们就想，如果一个用户一个用户去联系，不如我们通过代理模拟外地用户进行定时的去轮自己页面，拿结果再做js文件内容对比？
+
+然后我买了一些ssh代理，开始自己去抓一些被投诉的页面，收获并不大，很难复现，跑了一天也没有抓到一次js文件不一致的情况，放弃这个办法。
+
+然后这个问题搁置了非常非常久，直到一天一个懂开发的用户投诉，给我们提供了一张，js文件在手机端打开的截图，里面的js根本不是我们的js，后边我会给大家看各种劫持代码。
+
+我们才把网络劫持的排查方向改到对cdn文件不一致的方向，由于转换了思路，我们发现了一个非常屌的API，而且其实在移动端普及率非常高的API。
+
+Subresource Integrity
+
+简称sri，具体的可以去看文档，我简单来说就是可以通过生成一个文件的唯一hash值，然后帮你对文件的内容做检查，如果服务端返回的静态资源和生成的hash不一致，则报错不加载。就和大家去下载站下zip包都会有md5校验一样的原理。
+
+我这边写了一个简单的webpack插件，其实有现成的webpack-subresource-integrity这个插件，但是这个只是负责生成hash，你还要替换模板什么的，就比较费劲了，而且如何生成srihash不是核心问题，问题是如何利用这个特性来对付js文件劫持！
+
+插件代码我后边贴，这里说一下如何利用这个特性来对js文件进行劫持监控并且收集证据。
+
+我们知道我们发布的js文件都是可以生成一个srihash值的，如果我们的文件被劫持了，会触发这个script标签的onerror事件回调（本地多个移动端浏览器测试成功），然后我就想利用这个特性在onerror回调里做点事。
+
+1，复现场景。
+
+我们首先监控到onerror被触发，然后我们会自己再fetch一次这个script资源，当然这次fetch我们不加sri校验，那么我就可以得到这次报错的文件的真实内容了，然后我们通过一个日志接口上报这段js内容。
+
+2，多次对比。
+
+我们在fetch请求第一次的时候一般情况下访问到的是用户本地的浏览器缓存，而我们其实是想查看远程的cdn真实文件是否被改变了。如何穿透缓存呢？很简单，我们发第二次fetch，这次加一个时间戳就可以了，保证拿到的是无缓存的js文件，我们在本地进行对比，对比方法很简单就是size的diff。
+
+3，收集客户端信息。
+
+我们可以简单的收集到报错的页面信息，js url，js文件内容，因为我们是fetch请求，其实我们可以获取一些response header的，但是response header的获取有一些限制，不少头是拿不到的，可以去参考文档，但是自定义头如果设置了origin跨域是可以拿到的，这里需要在CDN源站来设置，然后我们就可以拿到报错的js的cdn节点地址了，这非常关键，用来甩锅和排查问题，甚至清cdn缓存。
+
+4，运用大数据思维（日志收都收回来了，就做一下计算吧），我们可以把onerror收回来的这一条条信息入库，然后分析出报错的运营商，报错的代码类型有多少种，客户分布情况等等。然后再结合页面的pv，就可以看到劫持的流量趋势了。
+
+嗯。以上几点都是我们一边实践一边想到的，最后的结果就是这样子：
+
+
+
+
+嗯，基本上就可以做到对js文件内容劫持的一个科学的监控了，很多人会说，报错了onerror就一定被劫持了么？有可能会是网络问题呀？
+
+那么我给大家看一下我们的日志，我们已经把所有日志入到了clickhouse中，方便我们sql查询：
+
+简单列几条：
+
+
+
+我在上报日志的时候因为已经diff了，所以直接搜diff=1的日志基本90%都是被劫持的，10%是文件内容不全的（CDN有时候大文件会返回断的文件，这个是CDN已知问题）
+
+看到劫持方法都非常的恶心，直接把你的js换成iframe，或者在你的js后边再插入一个他自己的js，我们也分析过这些js，干什么的都有，基本把之前用户投诉的场景都给吻合住了。
+
+最后，因为我们有了劫持流量趋势和劫持代码详细日志信息，我们开始下一步操作，解决劫持问题：
+
+1，保证cdn全链路https（回源一定也要用https，因为回源是访问站源，https对站点的压力会比较大，很多人不走全链路https，但是很多时候这个环节就会被劫持）
+
+2，改文件名，观察劫持流量情况。（这个非常重要，因为之前很多人都会通过改文件名来缓解投诉情况，但是我们不知道真实到底有多大作用，但是我们有了监控手段后发现，改了名字，流量直线掉下来，但是。。。第二天又慢慢恢复了，只能治标不治本）
+
+3，大家知道jsonp原理么？简单的复习下功课，jsonp是用来跨域获取数据用的，一般jsonp请求的都是一个服务端接口，然后服务端返回你一段代码，里面包含了一个可执行的callbackname，那么好了，我们是否可以请求js文件的时候不带 .js 尾缀呢？因为jsonp也不带，同样可以直接script啊，只需要在script上增加一个type就可以了，解析还是js代码。
+
+通过数据监控，我们发现这个问题100%几乎解决了劫持情况，投诉再也没有了，劫持的量也没了。。。（所以猜测运营商劫持是识别的网络下载的文件名尾缀，无差别劫持，哪怕你用了https）
+
+而我不用.js的文件进行加载页面js，就可以绕过这个劫持了。
+
+总结：
+
+这个问题我们搞了有大半年，终于目前有一些眉目了，这个问题其实从15年我就开始遇到，目前解决的求助了运维，日志，报表，cdn，前端后端，客服，很多部门来搞的，坚持就是胜利。。最后给大家看一下我的webpack插件代码：
+```javascript
+var SriPlugin = require('webpack-subresource-integrity');
+var HtmlWebpackPlugin = require('html-webpack-plugin');
+var ScriptExtInlineHtmlWebpackPlugin = require('script-ext-inline-html-webpack-plugin');
+var ScriptExtHtmlWebpackPlugin = require('script-ext-html-webpack-plugin');
+var path = require('path');
+var WebpackAssetsManifest = require('webpack-assets-manifest');
+var writeJson = require('write-json');
+
+var attackCatch = `
+  (function(){
+    function log(url, ret) {
+        return fetch(url, {
+            method: 'post',
+            body: encodeURIComponent(JSON.stringify({
+    sizes:ret.sizes,
+    diff:ret.diff,
+                jscontent: ret.context,
+                cdn: ret.cdn,
+                edge: ret.edge,
+                url: ret.url,
+                protocol: ret.protocol
+            })),
+            headers: {
+                "Content-type": "application/x-www-form-urlencoded"
+            }
+        });
+    }
+    function fetchError(res){
+      return Promise.resolve({
+        text:function(){
+          return res.status;
+        },
+        headers:res.headers || {},
+        status:res.status
+      });
+    }
+    function loadscript(url){
+      return fetch(url).then(function(res){
+        if(res.ok){
+          return res;
+        }
+        return fetchError(res);
+      }).catch(function(err){
+        return fetchError({
+          status:err
+        });
+      });
+    }
+    function getHeader(res1,res2,key){
+      if(res1.headers.get){
+        return res1.headers.get(key);
+      }else if(res2.headers.get){
+        return res2.headers.get(key);
+      }else{
+        return '';
+      }
+    }
+    window.attackCatch = function(ele){
+      var src = ele.src;
+      var protocol = location.protocol;
+      function getSourceData (res1,res2,len1,len2,context1){
+        return Promise.resolve({
+          diff:(len1 === len2) ? 0 : 1,
+          sizes:[len1,len2].join(','),
+          cdn:getHeader(res1,res2,'X-Via-CDN'),
+          edge:getHeader(res1,res2,'X-via-Edge'),
+          context:context1 ? context1 :  res1.status + ',' + res2.status,
+          url:src,
+          protocol:protocol
+        });
+      }
+      //如果不支持fetch，可能就是404或者cdn超时了，就不发log了。
+      if(window.fetch){
+        //加载2次，对比有缓存无缓存的size
+        Promise.all([loadscript(src),loadscript(src+'?vt='+(new Date().valueOf()))]).then(function(values){
+          var res1 = values[0],res2 = values[1];
+          //如果支持fetch，我们二次获取时根据http.status来判断，只有200才回报。
+          if(res1.status == '200' && res2.status == '200'){
+            var cdn = res1.headers.get('X-Via-CDN');
+            var edge = res1.headers.get('X-Via-Edge');
+            return Promise.all([res1.text(),res2.text()]).then(function(contexts){
+              var context1 = contexts[0];
+              var len1 = context1.length,len2 = contexts[1].length;
+              return getSourceData(res1,res2,len1,len2,context1);
+            });
+          }else if(res1.status == '200'){
+              return res1.text().then(function(context){
+                var len1 = context.length;
+                return getSourceData(res1,res2,len1,-1);
+              });
+          }else if(res2.status == '200'){
+              return res2.text().then(function(context){
+                var len2 = context.length;
+                return getSourceData(res1,res2,-1,len2);
+              });
+          }else{
+              return getSourceData(res1,res2,-1,-1);
+          }
+        }).then(function(ret){
+          if(ret && ret.context) log('日志服务接口，',ret);
+        })
+      }
+    }
+  })();
+`;
+
+module.exports = {
+  entry: {
+    index: './index.js'
+  },
+  output: {
+    path: __dirname + '/dist',
+    filename: '[name].js',
+    crossOriginLoading: 'anonymous'
+  },
+  plugins: [
+    new HtmlWebpackPlugin(),
+    new SriPlugin({
+      hashFuncNames: ['sha256', 'sha384'],
+      enabled: true
+    }),
+    new WebpackAssetsManifest({
+      done: function(manifest, stats) {
+        var mainAssetNames = stats.toJson().assetsByChunkName;
+        var json = {};
+        for (var name in mainAssetNames) {
+          if (mainAssetNames.hasOwnProperty(name)) {
+            var integrity = stats.compilation.assets[mainAssetNames[name]].integrity;
+            //重新生成一次integrity的json文件，因为版本问题，webpack4才支持直接生成。
+            json[mainAssetNames[name]] = integrity;
+          }
+        }
+        writeJson.sync(__dirname + '/dist/integrity.json', json)
+      }
+    }),
+    new ScriptExtHtmlWebpackPlugin({
+      custom: {
+        test: /.js$/,
+        attribute: 'onerror="attackCatch(this)"'
+      }
+    }),
+    new ScriptExtInlineHtmlWebpackPlugin({
+      prepend: attackCatch
+    }),
+  ]
+};
+```
+
+代码比较简单，就不解释了，我相信大家都看的懂，主要是onerror里的代码，唯一需要替换的是上报日志的接口，需要支持post，因为需要上报劫持的js文件内容和正常的文件内容，上报日志量比较大。
