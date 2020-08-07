@@ -1,0 +1,93 @@
+执行栈： 后进先出
+  function fun3() {
+      console.log('fun3')
+  }
+  function fun2() {
+      fun3();
+      console.log('fun2')
+  }
+  function fun1() {
+      fun2();
+      console.log('fun1')
+
+  }
+  fun1();
+
+输出： fun3 ——> fun2 --> fun1
+
+会先执行完fun3 并销毁 fun3 一次类推
+
+执行队列： 先进先出
+
+Promise.resolve().then(function () { //microTask
+    console.log('promise1!')
+  })
+Promise.resolve().then(function () { //microTask
+  console.log('promise2!')
+})  
+输出： promise1 ——> promise2
+
+// macro task与micro task
+俩队列
+执行栈执行完毕时会立刻先处理所有微任务队列中的事件，然后再去宏任务队列中取出一个事件。
+
+func() {
+  this.msg = 'end'
+  console.log('1')
+  setTimeout(() => { // macroTask
+     console.log('3')
+  }, 0)
+  Promise.resolve().then(function () { //microTask
+    console.log('promise!')
+  })
+  this.$nextTick(function () {
+    console.log('2')
+  })
+}
+
+以下事件属于宏任务：
+
+setTimeout
+MessageChannel
+postMessage
+setImmediate
+以下事件属于微任务
+
+new Promise()
+new MutaionObserver()
+
+
+vue nexttick 执行优先级 setImmediate -- MessageChannel -- Promise -- setTimeout
+
+var vm = new Vue({
+    el: '#example',
+    data: {
+        msg: 'begin',
+    },
+    mounted () {
+      this.msg = 'end'
+      console.log('1')
+      setTimeout(() => { // macroTask
+         console.log('3')
+      }, 0)
+      Promise.resolve().then(function () { //microTask
+        console.log('promise!')
+      })
+      this.$nextTick(function () {
+        console.log('2')
+      })
+  }
+})
+
+
+这个的执行顺序想必大家都知道先后打印：1、promise、2、3。
+
+因为首先触发了this.msg = 'end'，导致触发了watcher的update，从而将更新操作callback push进入vue的事件队列。
+
+this.$nextTick也为事件队列push进入了新的一个callback函数，他们都是通过setImmediate --> MessageChannel --> Promise --> setTimeout来定义timeFunc。而 Promise.resolve().then则是microTask，所以会先去打印promise。
+
+在支持MessageChannel和setImmediate的情况下，他们的执行顺序是优先于setTimeout的（在IE11/Edge中，setImmediate延迟可以在1ms以内，而setTimeout有最低4ms的延迟，所以setImmediate比setTimeout(0)更早执行回调函数。其次因为事件队列里，优先收入callback数组）所以会打印2，接着打印3
+
+但是在不支持MessageChannel和setImmediate的情况下，又会通过Promise定义timeFunc,也是老版本Vue 2.4 之前的版本会优先执行promise。这种情况会导致顺序成为了：1、2、promise、3。因为this.msg必定先会触发dom更新函数，dom更新函数会先被callback收纳进入异步时间队列，其次才定义Promise.resolve().then(function () { console.log('promise!')})这样的microTask，接着定义$nextTick又会被callback收纳。我们知道队列满足先进先出的原则，所以优先去执行callback收纳的对象。
+
+(当this.msg = 'end' 如果不支持MessageChannel和setImmediate 就已经会将vue队列添加到微任务队列，而$nextTick会添加到vue 队列，所以会优先执行此微任务中的vue队列，然后再执行下一微任务)
